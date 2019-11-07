@@ -30,9 +30,10 @@ class UserHandler(UserRequiredHandler):
     self._write_user_info(self.user)
 
 
+routes = [('/_/api/users/me', UserHandler)]
+
+
 app = webapp2.WSGIApplication(
-  [
-    ('/_/api/users/me', UserHandler)
-  ],
+  routes,
   config=get_webapp2_config(),
   debug=False)

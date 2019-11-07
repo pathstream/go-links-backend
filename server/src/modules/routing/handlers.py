@@ -50,7 +50,7 @@ class RedirectHandler(NoLoginRequiredHandler):
 
     if matching_shortlink:
       self.queue_event(requested_at,
-                       matching_shortlink.key.id(),
+                       matching_shortlink.get_id(),
                        destination,
                        self.request.get('s') or 'other')
       self.redirect(str(destination))
@@ -63,10 +63,9 @@ class RedirectHandler(NoLoginRequiredHandler):
            urllib.urlencode({'sp': shortpath}))
       )
 
+routes = [('.*', RedirectHandler)]
 
 app = webapp2.WSGIApplication(
-  [
-    ('.*', RedirectHandler),
-  ],
+  routes,
   config=get_webapp2_config(),
   debug=False)

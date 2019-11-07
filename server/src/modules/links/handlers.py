@@ -8,12 +8,15 @@ from oauth2client.client import FlowExchangeError
 import webapp2
 
 import helpers
-import models
 from modules.base import authentication
 from modules.base.handlers import UserRequiredHandler, NoLoginRequiredHandler, get_webapp2_config
+from modules.data import get_models
 from modules.organizations.utils import get_organization_id_for_email
 from modules.users import helpers as user_helpers
 from shared_helpers.encoding import convert_entity_to_dict
+
+
+models = get_models('links')
 
 
 class LinksHandler(UserRequiredHandler):
@@ -150,11 +153,12 @@ class PlayQueuedCreationHandler(NoLoginRequiredHandler):
     self.redirect(str(original_request_data['origin'] + '?r=' + base64.urlsafe_b64encode(json.dumps(response_data))))
 
 
+routes = [('/_/api/links', LinksHandler),
+          webapp2.Route('/_/api/links/<link_id:\d+>', LinksHandler),
+          ('/_/api/links/play_queued_request', PlayQueuedCreationHandler)]
+
+
 app = webapp2.WSGIApplication(
-  [
-    ('/_/api/links', LinksHandler),
-    webapp2.Route('/_/api/links/<link_id:\d+>', LinksHandler),
-    ('/_/api/links/play_queued_request', PlayQueuedCreationHandler)
-  ],
+  routes,
   config=get_webapp2_config(),
   debug=False)

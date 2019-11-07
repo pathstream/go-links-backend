@@ -6,8 +6,6 @@ import os
 import httplib2
 import pickle
 
-from google.appengine.api import users
-
 import jinja2
 from oauth2client.client import flow_from_clientsecrets
 from oauth2client.client import FlowExchangeError
@@ -16,7 +14,7 @@ from webapp2_extras import sessions
 
 from modules.base import authentication
 from modules.organizations.utils import get_organization_id_for_email
-from modules.users.helpers import get_or_create_user, send_login_email, validate_login_link, LoginEmailException, LoginLinkValidationError
+from modules.users.helpers import get_or_create_user
 from shared_helpers.configs import get_secrets, get_path_to_oauth_secrets
 from shared_helpers import env
 from shared_helpers import utils
@@ -39,26 +37,6 @@ class BaseHandler(webapp2.RequestHandler):
     google_auth_url = self.get_google_login_url(oauth_redirect_uri, redirect_to_after_oauth)
 
     self.response.write(template.render({'google_auth_url': google_auth_url}))
-
-  def attempt_auth_by_emailed_link(self):
-    email = self.request.get('e')
-    secret = self.request.get('s')
-
-    if not email or not secret:
-      return
-
-    logging.info('Attempting auth by link: (%s,%s)' % (email, secret))
-
-    try:
-      validate_login_link(email, secret)
-
-      self.user_email = email
-      self.user_org = get_organization_id_for_email(self.user_email) if self.user_email else None
-
-      self.session['user_email'] = self.user_email
-    except LoginLinkValidationError as e:
-      self.login_error = str(e)
-      return
 
   def check_authorization(self):
     self.abort(403)  # conservative default
@@ -102,16 +80,15 @@ class BaseHandler(webapp2.RequestHandler):
 
   def dispatch(self):
     if self.request.host == 'dev.trot.to':
-      if not users.get_current_user():
-        self.redirect(users.create_login_url('/'))
-        return
-      elif not users.is_current_user_admin():
-        self.abort(403)
+      # TODO: Properly dismantle code specific to dev.trot.to.
+      self.abort(403)
 
-    self.is_local_env = not os.getenv('SERVER_SOFTWARE', '').startswith('Google App Engine/')
+    self.is_local_env = env.current_env_is_local()
 
     # Get a session store for this request.
     self.session_store = sessions.get_store(request=self.request)
+
+    self.session['user_email'] = u'jon@trot.to'
 
     self.login_error = None
 
@@ -121,9 +98,6 @@ class BaseHandler(webapp2.RequestHandler):
     if not self.user_email:
       self.user_email = self.session.get('user_email')
       self.user_org = get_organization_id_for_email(self.user_email) if self.user_email else None
-
-    if not self.user_email:
-      self.attempt_auth_by_emailed_link()
 
     if not self.user_email and env.current_env_is_local():
       self.attempt_auth_by_user_header()
@@ -155,8 +129,17 @@ class BaseHandler(webapp2.RequestHandler):
   def session(self):
     # Returns a session using the default cookie key.
     # see https://webapp2.readthedocs.io/en/latest/api/webapp2_extras/sessions.html#webapp2_extras.sessions.SessionStore
+
+    if env.get_platform() == env.APP_ENGINE_PLATFORM_ID:
+      backend = 'datastore'  # uses App Engine db
+    else:
+      # TODO: Move away from using securecookie and always use a backend. For the moment, non-GAE deployments are
+      #       self-hosted, so some OAuth credentials appearing in the secure cookie isn't so concerning, but that's
+      #       not acceptable if the main Trotto instance is migrated to a different database.
+      backend = 'securecookie'
+
     return self.session_store.get_session(max_age=2592000,  # one month
-                                          backend='datastore')  # uses App Engine db
+                                          backend=backend)
 
 
 class NoLoginRequiredHandler(BaseHandler):
@@ -245,9 +228,8 @@ class LoginHandler(NoLoginRequiredHandler):
   def get(self):
     redirect_to = self.request.get('redirect_to', None)
 
-    if self.request.host.split(':')[0] not in ['trot.to', 'localhost']:
-      # quick & dirty workaround for issue were session isn't set before redirect.
-      self.response.write("""<!doctype html>
+    # quick & dirty workaround for issue were session isn't set before redirect.
+    self.response.write("""<!doctype html>
 <html>
   <head>
     <title>Redirecting...</title>
@@ -255,56 +237,12 @@ class LoginHandler(NoLoginRequiredHandler):
   </head>
   <body></body>
 </html>""" % (self.get_google_login_url(None, redirect_to)))
-      return
-
-    # only allow redirects back to our own URLs
-    if redirect_to:
-      if '://' in redirect_to:
-        redirect_to = redirect_to.split('://')[1]
-      redirect_to = '/' + redirect_to.split('/', 1)[1]
-
-    if self.user and redirect_to:
-      self.redirect(redirect_to)
-      return
-
-    self.render_login_selector_page(None, redirect_to)
 
 
 class GoogleLoginHandler(NoLoginRequiredHandler):
 
   def get(self):
     self.redirect(self.get_google_login_url())
-
-
-class EmailLoginHandler(NoLoginRequiredHandler):
-
-  def post(self):
-    try:
-      email = json.loads(self.request.body)['email'].lower()
-
-      send_login_email(self.request.headers['Referer'].split('?')[0], email)
-
-      message = 'Check your email for a login link'
-    except LoginEmailException as e:
-      message = str(e)
-
-    self.response.write(json.dumps({
-      'message': message
-    }))
-
-  def get(self):
-    # login attempt handled in base handler ^
-
-    if self.login_error:
-      self.response.write(self.login_error)
-      return
-
-    if not self.user.accepted_terms_at:
-      # all login methods now have UI for consenting to terms
-      self.user.accepted_terms_at = datetime.datetime.utcnow()
-      self.user.put()
-
-    self.redirect(self.session.get('redirect_to_after_oauth', '/'))
 
 
 def get_webapp2_config():
@@ -320,21 +258,21 @@ def get_webapp2_config():
   config['webapp2_extras.sessions'] = {
     'secret_key': sessions_secret,
     'cookie_args': {
-      'secure': os.getenv('SERVER_SOFTWARE', '').startswith('Google App Engine/')
+      'secure': env.current_env_is_production()
     }
   }
 
   return config
 
 
-app = webapp2.WSGIApplication(
-  [
-    ('/_/auth/oauth2_callback', OAuthCallbackHandler),
-    ('/_/auth/logout', LogoutHandler),
-    ('/_/auth/login', LoginHandler),
-    ('/_/auth/login/google', GoogleLoginHandler),
-    ('/_/auth/login/email', EmailLoginHandler),
-    ('/_/auth/email_callback', EmailLoginHandler),
-  ],
-  config=get_webapp2_config(),
-  debug=False)
+routes = [
+  ('/_/auth/oauth2_callback', OAuthCallbackHandler),
+  ('/_/auth/logout', LogoutHandler),
+  ('/_/auth/login', LoginHandler),
+  ('/_/auth/login/google', GoogleLoginHandler)
+]
+
+
+app = webapp2.WSGIApplication(routes,
+                              config=get_webapp2_config(),
+                              debug=False)

@@ -6,10 +6,13 @@ import urlparse
 import validators
 from validators.utils import ValidationFailure
 
-import models
+from modules.data import get_models
 from modules.users.helpers import get_or_create_user
 from shared_helpers.encoding import convert_entity_to_dict
 from shared_helpers.events import enqueue_event
+
+
+models = get_models('links')
 
 
 class LinkCreationException(Exception):
@@ -38,9 +41,7 @@ def derive_pattern_match(organization, shortpath):
   if '/' not in shortpath:  # paths without a second part can't be pattern-matching
     return None, None
 
-  prefix_matches = models.ShortLink.query(
-      models.ShortLink.organization == organization,
-      models.ShortLink.shortpath_prefix == shortpath.split('/')[0]).fetch(limit=None)
+  prefix_matches = models.ShortLink.get_by_prefix(organization, shortpath.split('/')[0])
 
   matching_shortlink = None
   matching_formatting_args = None
@@ -75,9 +76,7 @@ def _encode_ascii_incompatible_chars(destination):
 
 def get_shortlink(organization, shortpath):
   """Returns (shortlink_object, actual_destination)."""
-  perfect_match = models.ShortLink.query(
-      models.ShortLink.organization == organization,
-      models.ShortLink.shortpath == shortpath).get()
+  perfect_match = models.ShortLink.get_by_full_path(organization, shortpath)
 
   if perfect_match:
     return perfect_match, perfect_match.destination_url
@@ -154,14 +153,14 @@ def upsert_short_link(organization, creator, shortpath, destination, updated_lin
     link_kwargs = {'organization': organization,
                    'owner': creator,
                    'shortpath': shortpath,
-                   'destination_url': destination,
+                   'destination_url': unicode(destination),
                    'shortpath_prefix': shortpath.split('/')[0]}
     link = models.ShortLink(**link_kwargs)
 
   link.put()
 
   link_dict = convert_entity_to_dict(link, ['owner', 'shortpath', 'destination_url', 'organization'])
-  link_dict['id'] = link.key.id()
+  link_dict['id'] = link.get_id()
 
   enqueue_event('link.%s' % ('updated' if updated_link_object else 'created'),
                 'link',
@@ -172,8 +171,7 @@ def upsert_short_link(organization, creator, shortpath, destination, updated_lin
 def get_all_shortlinks_for_org(user_organization):
   shortlinks = []
 
-  # TODO: Handle more links (paginate).
-  for shortlink in models.ShortLink.query(models.ShortLink.organization == user_organization).fetch(limit=10000):
+  for shortlink in models.ShortLink.get_by_organization(user_organization):
     shortlinks.append(shortlink)
 
   return shortlinks

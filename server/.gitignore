@@ -1,3 +1,4 @@
 .virtualenv/
 config.zip
 local_db/
+trotto.db
