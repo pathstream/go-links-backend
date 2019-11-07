@@ -88,8 +88,6 @@ class BaseHandler(webapp2.RequestHandler):
     # Get a session store for this request.
     self.session_store = sessions.get_store(request=self.request)
 
-    self.session['user_email'] = u'jon@trot.to'
-
     self.login_error = None
 
     self.user_email = None
@@ -196,13 +194,25 @@ class OAuthCallbackHandler(NoLoginRequiredHandler):
 
     self.session['user_email'] = authentication.get_user_email(credentials)
 
+    del self.session['credentials']
+
     user = get_or_create_user(self.session['user_email'], get_organization_id_for_email(self.session['user_email']))
     if not user.accepted_terms_at:
       # all login methods now have UI for consenting to terms
       user.accepted_terms_at = datetime.datetime.utcnow()
       user.put()
 
-    self.redirect(self.session.get('redirect_to_after_oauth', '/'))
+      # quick & dirty workaround for issue where user login gets overwritten by
+      # conflicting request
+
+    self.response.write("""<!doctype html>
+<html>
+  <head>
+    <title>Redirecting...</title>
+    <script>window.location.href="%s"</script>
+  </head>
+  <body></body>
+</html>""" % (self.session.get('redirect_to_after_oauth', '/')))
 
 
 class LogoutHandler(NoLoginRequiredHandler):
