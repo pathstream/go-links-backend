@@ -1,7 +1,7 @@
 import sqlite3
-import time
 
 from modules.data.abstract import links
+from modules.data.implementations.sqlite.utils import get_pretty_unique_id
 from shared_helpers import utils
 
 conn = sqlite3.connect('trotto.db')
@@ -24,6 +24,34 @@ def _row_to_object(link):
                    visits_count_last_updated=utils.string_to_datetime(link[6]) if link[7] else None)
 
 
+def _get_one(query, params):
+  conn = sqlite3.connect('trotto.db')
+  cursor = conn.cursor()
+
+  cursor.execute(query, params)
+
+  link = cursor.fetchone()
+
+  conn.close()
+
+  if not link:
+    return None
+
+  return _row_to_object(link)
+
+
+def _get_multi(query, params):
+  conn = sqlite3.connect('trotto.db')
+  cursor = conn.cursor()
+
+  cursor.execute(query, params)
+  links = [_row_to_object(link) for link in cursor]
+
+  conn.close()
+
+  return links
+
+
 class ShortLink(links.ShortLink):
   @staticmethod
   def get_by_id(id):
@@ -43,35 +71,16 @@ class ShortLink(links.ShortLink):
 
   @staticmethod
   def get_by_prefix(organization, shortpath_prefix):
-    raise NotImplementedError
+    return _get_multi('SELECT * FROM links WHERE organization=? AND shortpath_prefix=?', (organization,
+                                                                                          shortpath_prefix))
 
   @staticmethod
   def get_by_full_path(organization, shortpath):
-    conn = sqlite3.connect('trotto.db')
-    cursor = conn.cursor()
-
-    cursor.execute('SELECT * FROM links WHERE organization=? AND shortpath=?', (organization, shortpath))
-
-    link = cursor.fetchone()
-
-    conn.close()
-
-    if not link:
-      return None
-
-    return _row_to_object(link)
+    return _get_one('SELECT * FROM links WHERE organization=? AND shortpath=?', (organization, shortpath))
 
   @staticmethod
   def get_by_organization(organization):
-    conn = sqlite3.connect('trotto.db')
-    cursor = conn.cursor()
-
-    cursor.execute('SELECT * FROM links')
-    links = [_row_to_object(link) for link in cursor]
-
-    conn.close()
-
-    return links
+    return _get_multi('SELECT * FROM links WHERE organization=?', (organization,))
 
   def put(self):
     conn = sqlite3.connect('trotto.db')
@@ -89,7 +98,7 @@ class ShortLink(links.ShortLink):
                      (self.organization, self.owner, self.shortpath, self.shortpath_prefix,
                       self.destination_url, self.visits_count, visits_count_last_updated, self.id))
     else:
-      new_id = int(time.time())
+      new_id = get_pretty_unique_id()
 
       cursor.execute('INSERT INTO links values (?, ?, ?, ?, ?, ?, ?, ?)',
                      (new_id, self.organization, self.owner, self.shortpath, self.shortpath_prefix,

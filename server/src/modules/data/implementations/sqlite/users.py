@@ -1,8 +1,8 @@
 import json
 import sqlite3
-import time
 
 from modules.data.abstract import users
+from modules.data.implementations.sqlite.utils import get_pretty_unique_id
 from shared_helpers import utils
 
 conn = sqlite3.connect('trotto.db')
@@ -49,7 +49,7 @@ class User(users.User):
                      (self.email, self.organization, self.role, accepted_terms_at,
                       self.domain_type, json.dumps(self.notifications), self.id))
     else:
-      new_id = int(time.time())
+      new_id = get_pretty_unique_id()
 
       cursor.execute('INSERT INTO users values (?, ?, ?, ?, ?, ?, ?)',
                      (new_id, self.email, self.organization, self.role, accepted_terms_at,
