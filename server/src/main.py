@@ -49,7 +49,7 @@ def main():
                                 debug=current_env_is_local())
 
   from paste import httpserver
-  httpserver.serve(app, host='localhost', port='9095')
+  httpserver.serve(app, host='0.0.0.0', port='9095')
 
 
 if __name__ == '__main__':

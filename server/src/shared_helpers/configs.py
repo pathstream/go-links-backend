@@ -17,7 +17,7 @@ def get_secrets(error_if_missing=True):
   secrets_file_name = 'secrets.yaml'
   try:
     with open(os.path.join(CONFIGS_PARENT_DIR, secrets_file_name)) as secrets_file:
-      secrets = yaml.load(secrets_file)
+      secrets = yaml.load(secrets_file, Loader=yaml.FullLoader)
   except IOError:
     if error_if_missing:
       raise
@@ -33,7 +33,7 @@ def get_organization_config(org_id):
                            'prod' if env.current_env_is_production() else 'dev',
                            'organizations',
                            org_id + '.yaml')) as f:
-      config = yaml.load(f)
+      config = yaml.load(f, Loader=yaml.FullLoader)
   except IOError:
     return {}
 
@@ -45,7 +45,7 @@ def get_config():
     with open(os.path.join(CONFIGS_PARENT_DIR,
                            'prod' if env.current_env_is_production() else 'dev',
                            'config.yaml')) as f:
-      config = yaml.load(f)
+      config = yaml.load(f, Loader=yaml.FullLoader)
   except IOError:
     return {}
 
