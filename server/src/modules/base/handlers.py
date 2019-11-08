@@ -190,11 +190,9 @@ class OAuthCallbackHandler(NoLoginRequiredHandler):
       self.redirect(self.session.get('redirect_to_after_oauth', '/'))
       return
 
-    self.session['credentials'] = pickle.dumps(credentials)
+    #self.session['credentials'] = pickle.dumps(credentials)
 
     self.session['user_email'] = authentication.get_user_email(credentials)
-
-    del self.session['credentials']
 
     user = get_or_create_user(self.session['user_email'], get_organization_id_for_email(self.session['user_email']))
     if not user.accepted_terms_at:
@@ -220,13 +218,13 @@ class LogoutHandler(NoLoginRequiredHandler):
   def get(self):
     """Both clears session data (user email, etc.) and revokes Google OAuth so a different user can be selected."""
 
-    try:
-      credentials = pickle.loads(self.session['credentials'])
-      http = httplib2.Http()
-      http = credentials.authorize(http)
-      credentials.revoke(http)
-    except:
-      pass
+    # try:
+    #   credentials = pickle.loads(self.session['credentials'])
+    #   http = httplib2.Http()
+    #   http = credentials.authorize(http)
+    #   credentials.revoke(http)
+    # except:
+    #   pass
 
     self.session.clear()  # remove session data
 
